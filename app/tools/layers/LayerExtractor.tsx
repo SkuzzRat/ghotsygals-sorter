@@ -2,6 +2,9 @@
 
 import { useRef, useState, useCallback, DragEvent, ChangeEvent } from 'react';
 import { readPsd, Layer as PsdLayer } from 'ag-psd';
+import JSZip from 'jszip';
+import Image from 'next/image';
+import { useTheme } from '@/app/hooks/useTheme';
 
 interface Layer {
   name: string;
@@ -32,12 +35,14 @@ function extractLayers(children: PsdLayer[]): Layer[] {
 }
 
 export default function LayerExtractor() {
+  const [theme, toggleTheme] = useTheme();
   const [layers, setLayers] = useState<Layer[]>([]);
   const [layerNames, setLayerNames] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [zipping, setZipping] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const canvasRefs = useRef<(HTMLCanvasElement | null)[]>([]);
 
@@ -116,6 +121,39 @@ export default function LayerExtractor() {
     setExporting(false);
   };
 
+  const canvasToBlob = (canvas: HTMLCanvasElement): Promise<Blob> =>
+    new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error('Canvas toBlob failed'));
+      }, 'image/png');
+    });
+
+  const exportZip = async () => {
+    setZipping(true);
+    try {
+      const zip = new JSZip();
+      for (let i = 0; i < layers.length; i++) {
+        const canvas = canvasRefs.current[i];
+        if (!canvas) continue;
+        const blob = await canvasToBlob(canvas);
+        const filename = `${sanitizeFilename(layerNames[i] || `layer_${i + 1}`)}.png`;
+        zip.file(filename, blob);
+      }
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'ghosty-gals-layers.zip';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } finally {
+      setZipping(false);
+    }
+  };
+
   const setCanvasRef = (index: number) => (el: HTMLCanvasElement | null) => {
     canvasRefs.current[index] = el;
     if (el && layers[index]) {
@@ -133,12 +171,63 @@ export default function LayerExtractor() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700&display=swap');
 
-        .gg-body {
+        /* ── Dark theme (default) ── */
+        .gg-root {
+          --bg: linear-gradient(135deg, #1a0b2e 0%, #2d1b4e 50%, #1a0b2e 100%);
+          --text: #ffffff;
+          --subtitle: #c77dff;
+          --upload-bg: rgba(255,255,255,0.05);
+          --upload-bg-hover: rgba(255,255,255,0.1);
+          --upload-bg-drag: rgba(255,110,199,0.2);
+          --upload-border: #c77dff;
+          --card-bg: rgba(255,255,255,0.08);
+          --card-border: rgba(199,125,255,0.2);
+          --layers-header-bg: rgba(255,255,255,0.05);
+          --layers-header-border: rgba(199,125,255,0.3);
+          --input-bg: rgba(255,255,255,0.1);
+          --input-bg-focus: rgba(255,255,255,0.15);
+          --input-border: rgba(199,125,255,0.3);
+          --input-color: #ffffff;
+          --meta-color: #c77dff;
+          --preview-c1: #2d1b4e;
+          --preview-c2: #3d2b5e;
+          --toggle-bg: rgba(255,255,255,0.1);
+          --toggle-hover: rgba(255,255,255,0.2);
+          --toggle-color: #c77dff;
+        }
+
+        /* ── Light theme ── */
+        .gg-root.light {
+          --bg: linear-gradient(135deg, #fdf4ff 0%, #f0e6ff 50%, #fdf4ff 100%);
+          --text: #2d1b4e;
+          --subtitle: #7b2cbf;
+          --upload-bg: rgba(157,78,221,0.04);
+          --upload-bg-hover: rgba(157,78,221,0.09);
+          --upload-bg-drag: rgba(255,110,199,0.12);
+          --upload-border: #c77dff;
+          --card-bg: rgba(255,255,255,0.85);
+          --card-border: rgba(157,78,221,0.2);
+          --layers-header-bg: rgba(255,255,255,0.7);
+          --layers-header-border: rgba(157,78,221,0.25);
+          --input-bg: rgba(157,78,221,0.06);
+          --input-bg-focus: rgba(157,78,221,0.12);
+          --input-border: rgba(157,78,221,0.3);
+          --input-color: #2d1b4e;
+          --meta-color: #7b2cbf;
+          --preview-c1: #e8d5ff;
+          --preview-c2: #f5eeff;
+          --toggle-bg: rgba(157,78,221,0.1);
+          --toggle-hover: rgba(157,78,221,0.18);
+          --toggle-color: #7b2cbf;
+        }
+
+        .gg-root {
           font-family: 'Nunito', sans-serif;
-          background: linear-gradient(135deg, #1a0b2e 0%, #2d1b4e 50%, #1a0b2e 100%);
+          background: var(--bg);
           min-height: 100vh;
           padding: 40px 20px;
-          color: #fff;
+          color: var(--text);
+          transition: background 0.3s ease, color 0.3s ease;
         }
 
         .gg-container {
@@ -146,9 +235,45 @@ export default function LayerExtractor() {
           margin: 0 auto;
         }
 
+        .gg-topbar {
+          display: flex;
+          justify-content: flex-end;
+          margin-bottom: 8px;
+        }
+
+        .gg-theme-toggle {
+          background: var(--toggle-bg);
+          border: 1px solid var(--input-border);
+          border-radius: 20px;
+          padding: 8px 16px;
+          color: var(--toggle-color);
+          font-family: 'Nunito', sans-serif;
+          font-weight: 700;
+          font-size: 0.9em;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .gg-theme-toggle:hover {
+          background: var(--toggle-hover);
+        }
+
         .gg-header {
           text-align: center;
           margin-bottom: 50px;
+        }
+
+        .gg-logo {
+          animation: gg-logo-float 3s ease-in-out infinite;
+          margin-bottom: 16px;
+        }
+
+        @keyframes gg-logo-float {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-10px); }
         }
 
         .gg-h1 {
@@ -163,13 +288,13 @@ export default function LayerExtractor() {
 
         .gg-subtitle {
           font-size: 1.2em;
-          color: #c77dff;
+          color: var(--subtitle);
           opacity: 0.9;
         }
 
         .gg-upload-zone {
-          background: rgba(255,255,255,0.05);
-          border: 3px dashed #c77dff;
+          background: var(--upload-bg);
+          border: 3px dashed var(--upload-border);
           border-radius: 20px;
           padding: 60px 40px;
           text-align: center;
@@ -179,13 +304,13 @@ export default function LayerExtractor() {
         }
 
         .gg-upload-zone:hover {
-          background: rgba(255,255,255,0.1);
+          background: var(--upload-bg-hover);
           border-color: #ff6ec7;
           transform: translateY(-5px);
         }
 
         .gg-upload-zone.dragging {
-          background: rgba(255,110,199,0.2);
+          background: var(--upload-bg-drag);
           border-color: #ff6ec7;
           transform: scale(1.02);
         }
@@ -210,17 +335,21 @@ export default function LayerExtractor() {
         }
 
         .gg-upload-hint {
-          color: #c77dff;
+          color: var(--subtitle);
           opacity: 0.8;
         }
 
         .gg-error {
-          background: rgba(255,0,80,0.2);
+          background: rgba(255,0,80,0.15);
           border: 2px solid #ff0050;
           border-radius: 15px;
           padding: 20px;
           margin-bottom: 20px;
-          color: #ffb3d9;
+          color: #d00045;
+        }
+
+        .gg-root.light .gg-error {
+          color: #c0003a;
         }
 
         .gg-loading {
@@ -260,15 +389,22 @@ export default function LayerExtractor() {
           align-items: center;
           margin-bottom: 30px;
           padding: 20px;
-          background: rgba(255,255,255,0.05);
+          background: var(--layers-header-bg);
           border-radius: 15px;
-          border: 2px solid rgba(199,125,255,0.3);
+          border: 2px solid var(--layers-header-border);
         }
 
         .gg-layers-title {
           font-family: 'Fredoka One', cursive;
           font-size: 1.8em;
           color: #ff6ec7;
+        }
+
+        .gg-header-buttons {
+          display: flex;
+          gap: 12px;
+          flex-wrap: wrap;
+          justify-content: flex-end;
         }
 
         .gg-export-all-btn {
@@ -282,15 +418,39 @@ export default function LayerExtractor() {
           font-size: 1em;
           cursor: pointer;
           transition: all 0.3s ease;
-          box-shadow: 0 5px 20px rgba(255,110,199,0.4);
+          box-shadow: 0 5px 20px rgba(255,110,199,0.3);
         }
 
         .gg-export-all-btn:hover:not(:disabled) {
           transform: translateY(-3px);
-          box-shadow: 0 8px 30px rgba(255,110,199,0.6);
+          box-shadow: 0 8px 30px rgba(255,110,199,0.5);
         }
 
         .gg-export-all-btn:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
+        }
+
+        .gg-export-zip-btn {
+          background: linear-gradient(135deg, #c77dff, #9d4edd);
+          color: white;
+          border: none;
+          padding: 15px 30px;
+          border-radius: 25px;
+          font-family: 'Nunito', sans-serif;
+          font-weight: 700;
+          font-size: 1em;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          box-shadow: 0 5px 20px rgba(157,78,221,0.3);
+        }
+
+        .gg-export-zip-btn:hover:not(:disabled) {
+          transform: translateY(-3px);
+          box-shadow: 0 8px 30px rgba(157,78,221,0.5);
+        }
+
+        .gg-export-zip-btn:disabled {
           opacity: 0.7;
           cursor: not-allowed;
         }
@@ -302,10 +462,10 @@ export default function LayerExtractor() {
         }
 
         .gg-layer-card {
-          background: rgba(255,255,255,0.08);
+          background: var(--card-bg);
           border-radius: 15px;
           overflow: hidden;
-          border: 2px solid rgba(199,125,255,0.2);
+          border: 2px solid var(--card-border);
           transition: all 0.3s ease;
           animation: gg-slide-in 0.5s ease backwards;
         }
@@ -318,11 +478,11 @@ export default function LayerExtractor() {
         .gg-layer-card:hover {
           transform: translateY(-8px);
           border-color: #ff6ec7;
-          box-shadow: 0 10px 30px rgba(255,110,199,0.3);
+          box-shadow: 0 10px 30px rgba(255,110,199,0.25);
         }
 
         .gg-layer-preview {
-          background: repeating-conic-gradient(#2d1b4e 0% 25%, #3d2b5e 0% 50%) 50% / 20px 20px;
+          background: repeating-conic-gradient(var(--preview-c1) 0% 25%, var(--preview-c2) 0% 50%) 50% / 20px 20px;
           padding: 20px;
           min-height: 200px;
           display: flex;
@@ -342,11 +502,11 @@ export default function LayerExtractor() {
 
         .gg-layer-name-input {
           width: 100%;
-          background: rgba(255,255,255,0.1);
-          border: 2px solid rgba(199,125,255,0.3);
+          background: var(--input-bg);
+          border: 2px solid var(--input-border);
           border-radius: 10px;
           padding: 12px 15px;
-          color: white;
+          color: var(--input-color);
           font-family: 'Nunito', sans-serif;
           font-size: 1em;
           font-weight: 600;
@@ -358,7 +518,7 @@ export default function LayerExtractor() {
 
         .gg-layer-name-input:focus {
           border-color: #ff6ec7;
-          background: rgba(255,255,255,0.15);
+          background: var(--input-bg-focus);
         }
 
         .gg-layer-meta {
@@ -367,7 +527,7 @@ export default function LayerExtractor() {
           align-items: center;
           margin-bottom: 15px;
           font-size: 0.9em;
-          color: #c77dff;
+          color: var(--meta-color);
         }
 
         .gg-download-btn {
@@ -387,14 +547,29 @@ export default function LayerExtractor() {
         .gg-download-btn:hover {
           background: linear-gradient(135deg, #c77dff, #9d4edd);
           transform: translateY(-2px);
-          box-shadow: 0 5px 15px rgba(157,78,221,0.4);
+          box-shadow: 0 5px 15px rgba(157,78,221,0.35);
         }
       `}</style>
 
-      <div className="gg-body">
+      <div className={`gg-root${theme === 'light' ? ' light' : ''}`}>
         <div className="gg-container">
+
+          <div className="gg-topbar">
+            <button className="gg-theme-toggle" onClick={toggleTheme}>
+              {theme === 'dark' ? '☀️ Light mode' : '🌙 Dark mode'}
+            </button>
+          </div>
+
           <header className="gg-header">
-            <h1 className="gg-h1">👻 Ghosty Gals Layer Extractor</h1>
+            <Image
+              src="/ghostygals-logo.png"
+              alt="Ghosty Gals"
+              width={120}
+              height={120}
+              className="gg-logo"
+              priority
+            />
+            <h1 className="gg-h1">Ghosty Gals Layer Extractor</h1>
             <p className="gg-subtitle">Upload your PSD, name your layers, export as PNGs~</p>
           </header>
 
@@ -434,13 +609,22 @@ export default function LayerExtractor() {
                 <div className="gg-layers-title">
                   {layers.length} Layer{layers.length !== 1 ? 's' : ''} Found
                 </div>
-                <button
-                  className="gg-export-all-btn"
-                  onClick={exportAll}
-                  disabled={exporting}
-                >
-                  {exporting ? '⏳ Exporting...' : '💾 Export All Layers'}
-                </button>
+                <div className="gg-header-buttons">
+                  <button
+                    className="gg-export-zip-btn"
+                    onClick={exportZip}
+                    disabled={zipping || exporting}
+                  >
+                    {zipping ? '⏳ Zipping...' : '🗜️ Download ZIP'}
+                  </button>
+                  <button
+                    className="gg-export-all-btn"
+                    onClick={exportAll}
+                    disabled={exporting || zipping}
+                  >
+                    {exporting ? '⏳ Exporting...' : '💾 Export All Layers'}
+                  </button>
+                </div>
               </div>
 
               <div className="gg-layers-grid">
