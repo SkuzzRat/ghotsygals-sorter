@@ -14,12 +14,12 @@ interface Layer {
 }
 
 const SUFFIXES = [
-  { label: '_L',  hint: 'Linework + highlights/shadows', color: '#3a3a3a', text: '#fff' },
-  { label: '_C5', hint: 'Skin layer',                   color: '#f4a57a', text: '#fff' },
-  { label: '_C4', hint: 'Dye Color 4 – accent/detail',  color: '#9d4edd', text: '#fff' },
-  { label: '_C3', hint: 'Dye Color 3 – accent',         color: '#4ecb71', text: '#fff' },
-  { label: '_C2', hint: 'Dye Color 2 – secondary',      color: '#4e9edd', text: '#fff' },
-  { label: '_C1', hint: 'Dye Color 1 – main/base',      color: '#ff6ec7', text: '#fff' },
+  { label: '_L',  hint: 'Linework + highlights/shadows',        color: '#1a1a1a', text: '#fff' },
+  { label: '_C1', hint: 'Dye Color 1 – main/base',             color: '#e02020', text: '#fff' },
+  { label: '_C2', hint: 'Dye Color 2 – secondary',             color: '#1a6fd4', text: '#fff' },
+  { label: '_C3', hint: 'Dye Color 3 – accent',                color: '#28a745', text: '#fff' },
+  { label: '_C4', hint: 'Dye Color 4 – accent/detail',         color: '#f0b800', text: '#fff' },
+  { label: '_C5', hint: 'Skin layer only – do NOT count as a dye color', color: '#f07820', text: '#fff' },
 ];
 
 function getBaseName(name: string): string {
@@ -68,6 +68,7 @@ export default function LayerExtractor() {
   const [dragging, setDragging] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [zipping, setZipping] = useState(false);
+  const [tipOpen, setTipOpen] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const canvasRefs = useRef<(HTMLCanvasElement | null)[]>([]);
 
@@ -541,6 +542,88 @@ export default function LayerExtractor() {
           width: 100%;
         }
 
+        /* ── How-to tip box ── */
+        .gg-tip-box {
+          background: var(--layers-header-bg);
+          border: 2px solid var(--layers-header-border);
+          border-radius: 14px;
+          margin-bottom: 20px;
+          overflow: hidden;
+        }
+
+        .gg-tip-toggle {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 12px 18px;
+          background: none;
+          border: none;
+          cursor: pointer;
+          color: var(--subtitle);
+          font-family: 'Nunito', sans-serif;
+          font-weight: 700;
+          font-size: 0.9em;
+          text-align: left;
+          transition: background 0.2s ease;
+        }
+
+        .gg-tip-toggle:hover { background: var(--upload-bg-hover); }
+
+        .gg-tip-caret {
+          margin-left: auto;
+          transition: transform 0.2s ease;
+          font-style: normal;
+        }
+
+        .gg-tip-caret.open { transform: rotate(180deg); }
+
+        .gg-tip-body {
+          padding: 0 18px 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .gg-tip-step {
+          display: flex;
+          gap: 10px;
+          align-items: flex-start;
+          font-size: 0.88em;
+          color: var(--text);
+          line-height: 1.5;
+        }
+
+        .gg-tip-num {
+          background: linear-gradient(135deg, #ff6ec7, #c77dff);
+          color: white;
+          border-radius: 50%;
+          width: 22px;
+          height: 22px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 700;
+          font-size: 0.8em;
+          flex-shrink: 0;
+          margin-top: 1px;
+        }
+
+        .gg-tip-chips {
+          display: inline-flex;
+          gap: 4px;
+          flex-wrap: wrap;
+          vertical-align: middle;
+        }
+
+        .gg-tip-chip {
+          padding: 2px 8px;
+          border-radius: 20px;
+          font-size: 0.8em;
+          font-weight: 700;
+          display: inline-block;
+        }
+
         /* ── Export buttons ── */
         .gg-export-all-btn {
           background: linear-gradient(135deg, #ff6ec7, #c77dff);
@@ -816,6 +899,40 @@ export default function LayerExtractor() {
                     <span className="gg-selected-count">{selected.size} selected</span>
                   )}
                 </div>
+              </div>
+
+              {/* ── How-to tip box ── */}
+              <div className="gg-tip-box">
+                <button className="gg-tip-toggle" onClick={() => setTipOpen((o) => !o)}>
+                  💡 How to name your layers
+                  <em className={`gg-tip-caret${tipOpen ? ' open' : ''}`}>▼</em>
+                </button>
+                {tipOpen && (
+                  <div className="gg-tip-body">
+                    <div className="gg-tip-step">
+                      <span className="gg-tip-num">1</span>
+                      <span>Check the boxes on all layers that belong to the same item — e.g. all four <strong>cutie crumb</strong> layers.</span>
+                    </div>
+                    <div className="gg-tip-step">
+                      <span className="gg-tip-num">2</span>
+                      <span>Type the base name in the <strong>Rename selected</strong> bar that appears and hit <strong>Apply</strong>. All checked layers get that name.</span>
+                    </div>
+                    <div className="gg-tip-step">
+                      <span className="gg-tip-num">3</span>
+                      <span>Click the correct suffix chip on each card to finish the name:
+                        <span className="gg-tip-chips" style={{ marginLeft: 6 }}>
+                          {SUFFIXES.map(({ label, color, text }) => (
+                            <span key={label} className="gg-tip-chip" style={{ background: color, color: text }}>{label}</span>
+                          ))}
+                        </span>
+                      </span>
+                    </div>
+                    <div className="gg-tip-step">
+                      <span className="gg-tip-num">4</span>
+                      <span>Export with <strong>Download ZIP</strong> — each file will be named exactly as shown, e.g. <em>cutie_crumb_C1.png</em>.</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* ── Bulk rename bar (shown when anything is selected) ── */}
